@@ -46,13 +46,10 @@ def log_trade(action, ticker, shares, price, cash):
 
 def main():
     state = load_state()
-    if datetime.now(timezone.utc) - datetime.fromisoformat(state["started_at"]) > timedelta(days=14):
-        print("14-day demo period finished. No further simulated trades.")
-        return
 
     for ticker in TICKERS:
         try:
-            hist = yf.Ticker(ticker).history(period="3mo", interval="1d", auto_adjust=True)
+            hist = yf.Ticker(ticker).history(period="60d", interval="5m", auto_adjust=True)
             if hist.empty or len(hist) < 22:
                 print(f"{ticker}: insufficient data; skipped")
                 continue
@@ -89,7 +86,7 @@ def main():
     holdings_value = 0.0
     for ticker, pos in state["positions"].items():
         try:
-            latest = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True)
+            latest = yf.Ticker(ticker).history(period="5d", interval="5m", auto_adjust=True)
             if not latest.empty:
                 holdings_value += float(pos["shares"]) * float(latest["Close"].dropna().iloc[-1])
         except Exception:
