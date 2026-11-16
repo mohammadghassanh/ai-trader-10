@@ -1,0 +1,203 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1220">
+<title>AI Trader 10 Dashboard</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:20px 14px 40px;
+ background:#0b1220;color:#f4f7fb;
+ font-family:-apple-system,BlinkMacSystemFont,sans-serif
+}
+main{max-width:850px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center}
+h1{font-size:24px}
+h2{font-size:17px}
+.status{color:#36d399;font-size:12px}
+p,.muted{color:#9aabc0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}
+.card,.section{
+ background:#141f30;border:1px solid #26364b;
+ border-radius:16px;padding:17px;margin-bottom:14px
+}
+.metric-label{color:#9aabc0;font-size:12px}
+.metric{font-size:23px;font-weight:bold;margin-top:9px}
+.green{color:#36d399}
+.red{color:#fb7185}
+button{
+ background:#243852;border:1px solid #385474;
+ color:white;padding:10px 13px;border-radius:10px
+}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:12px 7px;border-bottom:1px solid #26364b}
+th{color:#9aabc0}
+td:last-child,th:last-child{text-align:right}
+footer{font-size:11px;color:#9aabc0;line-height:1.6;margin-top:20px}
+@media(max-width:380px){.metric{font-size:19px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+ <div>
+  <h1>🚀 AI Trader 10</h1>
+  <div class="status">● Paper Trading Dashboard</div>
+ </div>
+ <button onclick="loadData()">↻ Aktualisieren</button>
+</header>
+
+<p id="updated">Lade Daten ...</p>
+
+<div class="grid">
+ <div class="card">
+  <div class="metric-label">Virtuelles Guthaben</div>
+  <div class="metric" id="cash">–</div>
+ </div>
+ <div class="card">
+  <div class="metric-label">Portfolio Gesamtwert</div>
+  <div class="metric" id="total">–</div>
+ </div>
+ <div class="card">
+  <div class="metric-label">Gewinn / Verlust</div>
+  <div class="metric" id="profit">–</div>
+ </div>
+ <div class="card">
+  <div class="metric-label">Offene Positionen</div>
+  <div class="metric" id="count">–</div>
+ </div>
+</div>
+
+<div class="section">
+ <h2>📊 ETF-Positionen</h2>
+ <div id="positions">Lade Positionen ...</div>
+</div>
+
+<div class="section">
+ <h2>🧾 Transaktionshistorie</h2>
+ <div id="trades">Lade Transaktionen ...</div>
+</div>
+
+<footer>
+ Nur virtuelle Simulation. Keine echten Käufe oder Verkäufe.
+ Kurse können verzögert sein.
+ <br>Letzte Aktualisierung: <span id="time">–</span>
+</footer>
+</main>
+
+<script>
+const REPO="mohammadghassanh/ai-trader-10";
+const BRANCH="main";
+
+function euro(n){
+ return Number(n||0).toLocaleString("de-DE",{
+  style:"currency",currency:"EUR"
+ });
+}
+
+async function getFile(path){
+ const url=`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`;
+ const response=await fetch(url,{cache:"no-store"});
+ if(!response.ok) throw new Error(path+" konnte nicht geladen werden.");
+ const file=await response.json();
+ const binary=atob(file.content.replace(/\n/g,""));
+ const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+ return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function table(items,columns){
+ if(!items.length)return '<p class="muted">Keine Daten vorhanden.</p>';
+ return '<div style="overflow-x:auto"><table><thead><tr>'+
+ columns.map(c=>'<th>'+c.label+'</th>').join('')+
+ '</tr></thead><tbody>'+
+ items.map(item=>'<tr>'+
+ columns.map(c=>'<td>'+c.value(item)+'</td>').join('')+
+ '</tr>').join('')+
+ '</tbody></table></div>';
+}
+
+async function loadData(){
+ const updated=document.getElementById("updated");
+ updated.textContent="Daten werden aktualisiert ...";
+
+ try{
+  const state=await getFile("paper_state.json");
+  const positions=Object.entries(state.positions||{}).map(([ticker,p])=>({
+   ticker:ticker,
+   shares:Number(p.shares||0),
+   entry:Number(p.entry||0),
+   price:Number(p.current_price||p.price||p.entry||0)
+  }));
+
+  const cash=Number(state.cash||0);
+  const invested=positions.reduce((s,p)=>s+p.shares*p.price,0);
+  const total=cash+invested;
+  const starting=Number(state.starting_cash||10);
+  const profit=total-starting;
+
+  document.getElementById("cash").textContent=euro(cash);
+  document.getElementById("total").textContent=euro(total);
+
+  const profitEl=document.getElementById("profit");
+  profitEl.textContent=(profit>=0?"+":"")+euro(profit);
+  profitEl.className="metric "+(profit>=0?"green":"red");
+
+  document.getElementById("count").textContent=positions.length;
+
+  document.getElementById("positions").innerHTML=table(
+   positions,
+   [
+    {label:"ETF",value:p=>p.ticker},
+    {label:"Anteile",value:p=>p.shares},
+    {label:"Kaufkurs",value:p=>euro(p.entry)},
+    {label:"Kurs (gespeichert)",value:p=>euro(p.price)}
+   ]
+  );
+
+  let trades=[];
+  try{
+   const raw=await fetch(
+    `https://raw.githubusercontent.com/${REPO}/${BRANCH}/trades.csv?t=${Date.now()}`
+   );
+   if(raw.ok){
+    const csv=await raw.text();
+    const lines=csv.trim().split(/\r?\n/);
+    if(lines.length>1){
+     const headers=lines[0].split(",");
+     trades=lines.slice(1).filter(Boolean).slice(-20).reverse().map(line=>{
+      const values=line.split(",");
+      return Object.fromEntries(headers.map((h,i)=>[
+       h.trim(),(values[i]||"").trim()
+      ]));
+     });
+    }
+   }
+  }catch(e){}
+
+  document.getElementById("trades").innerHTML=table(
+   trades,
+   [
+    {label:"Zeit",value:p=>p.timestamp||p.time||p.date||"–"},
+    {label:"ETF",value:p=>p.ticker||p.symbol||"–"},
+    {label:"Aktion",value:p=>p.action||p.side||p.type||"–"},
+    {label:"Menge",value:p=>p.shares||p.quantity||"–"}
+   ]
+  );
+
+  const now=new Date().toLocaleString("de-DE");
+  document.getElementById("time").textContent=now;
+  updated.textContent="Verbunden · Letzte Aktualisierung: "+now;
+
+ }catch(error){
+  updated.textContent="Fehler: "+error.message;
+ }
+}
+
+loadData();
+setInterval(loadData,60000);
+</script>
+</body>
+</html>
