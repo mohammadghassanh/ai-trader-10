@@ -4,7 +4,7 @@ name: AI Trader 10 paper demo
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 18 * * 1-5'
+    - cron: '*/15 * * * *'
 
 permissions:
   contents: write
